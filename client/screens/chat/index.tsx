@@ -1,237 +1,140 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, FlatList } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, TextInput } from 'react-native';
 import { Screen } from '@/components/Screen';
-import { useAuth } from '@/contexts/AuthContext';
-import { useSafeRouter } from '@/hooks/useSafeRouter';
+import { useSafeRouter, useSafeSearchParams } from '@/hooks/useSafeRouter';
 import { FontAwesome6 } from '@expo/vector-icons';
+import { useState } from 'react';
 
-const AI_ROLES = [
-  { id: 'coach', name: 'Alex', title: '教练', desc: '规划 + 激励 + 承诺追踪', icon: 'bullhorn' as const, color: '#D97706', bg: '#FFFBEB' },
-  { id: 'mentor', name: 'Socra', title: '导师', desc: '苏格拉底式引导', icon: 'graduation-cap' as const, color: '#4F46E5', bg: '#EEF2FF' },
-  { id: 'partner', name: 'Jamie', title: '陪练', desc: '口语陪练 + 考前陪伴', icon: 'handshake' as const, color: '#059669', bg: '#F0FDF4' },
-  { id: 'analyst', name: 'Sage', title: '分析师', desc: '四维诊断 + 卡点定位', icon: 'chart-bar' as const, color: '#7C3AED', bg: '#F5F3FF' },
+const ROLES = [
+  { id: 'coach', name: 'Coach 教练', desc: '目标驱动，推动你突破', sub: '严格要求，聚焦结果', color: '#F97316', bg: '#FFF7ED', icon: 'dumbbell' },
+  { id: 'mentor', name: 'Mentor 导师', desc: '知识渊博，解惑答疑', sub: '深度讲解，建立体系', color: '#3B82F6', bg: '#EFF6FF', icon: 'chalkboard-user' },
+  { id: 'partner', name: 'Partner 陪练', desc: '并肩作战，共同成长', sub: '陪伴练习，互相鼓励', color: '#10B981', bg: '#ECFDF5', icon: 'handshake' },
+  { id: 'companion', name: 'Companion 陪伴', desc: '情感支持，减压释怀', sub: '倾听理解，温暖陪伴', color: '#8B5CF6', bg: '#F5F3FF', icon: 'heart' },
 ];
 
-interface Message {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: Date;
+const MOCK_MESSAGES: Record<string, { from: 'ai' | 'user'; text: string; confidence?: number }[]> = {
+  coach: [
+    { from: 'ai', text: '今天的 TR 练习成绩出来了——Band 5.5。距离目标还有 1 分。我们来分析你的弱点，制定本周冲刺计划。', confidence: 88 },
+    { from: 'user', text: '好的，我觉得主要是论点展开不够' },
+    { from: 'ai', text: '对。你的问题在于每个论点只写 2-3 句就结束了。今晚的任务：针对你刚才的作文，把第二段重新扩展到 80 词以上。现在开始。', confidence: 92 },
+  ],
+  mentor: [
+    { from: 'ai', text: '你提到了"technology makes life complex"——这个论点很好。但你能具体说说，是哪些技术让生活变复杂了吗？', confidence: 85 },
+    { from: 'user', text: '比如社交媒体，让人花太多时间' },
+    { from: 'ai', text: '很好！这就是一个具体的例子。现在试着用"for instance"或"take...as an example"来组织这个论点。', confidence: 90 },
+  ],
+  partner: [
+    { from: 'ai', text: '嘿！今天状态怎么样？上次你说 CC 维度比较弱，我们一起练练段落衔接吧？', confidence: 80 },
+    { from: 'user', text: '好呀，我总是不知道怎么连接段落' },
+    { from: 'ai', text: '没关系！我们先从最简单的开始——试试用"Furthermore"和"However"各造一个句子？', confidence: 85 },
+  ],
+  companion: [
+    { from: 'ai', text: '最近备考压力是不是有点大？我注意到你昨晚学习到了很晚。', confidence: 78 },
+    { from: 'user', text: '嗯，感觉怎么都提不了分' },
+    { from: 'ai', text: '我理解这种感觉。但你看，你的 TR 从 5.0 升到了 5.5，这已经是进步了。给自己一点时间。', confidence: 92 },
+  ],
+};
+
+function RoleList() {
+  const router = useSafeRouter();
+
+  return (
+    <Screen>
+      <ScrollView className="flex-1 bg-stone-50" showsVerticalScrollIndicator={false}>
+        <View className="px-6 pt-12 pb-4">
+          <Text className="text-stone-900 font-bold text-2xl">AI 对话</Text>
+          <Text className="text-stone-500 text-sm mt-1">选择一位 AI 伙伴开始对话</Text>
+        </View>
+
+        <View className="px-6 gap-3 pb-8">
+          {ROLES.map(role => (
+            <TouchableOpacity
+              key={role.id}
+              className="bg-white rounded-2xl p-5 flex-row items-center"
+              style={{ shadowColor: role.color, shadowOpacity: 0.08, shadowRadius: 12, elevation: 2, borderWidth: 1, borderColor: role.color + '20' }}
+              onPress={() => router.push('/chat', { role: role.id })}
+            >
+              <View className="w-14 h-14 rounded-full items-center justify-center mr-4" style={{ backgroundColor: role.bg }}>
+                <Text className="text-2xl">{role.icon}</Text>
+              </View>
+              <View className="flex-1">
+                <Text className="font-bold text-lg" style={{ color: role.color }}>{role.name}</Text>
+                <Text className="text-stone-700 text-sm mt-0.5">{role.desc}</Text>
+                <Text className="text-stone-400 text-xs mt-0.5">{role.sub}</Text>
+              </View>
+              <FontAwesome6 name="chevron-right" size={16} color="#D1D5DB" />
+            </TouchableOpacity>
+          ))}
+        </View>
+      </ScrollView>
+    </Screen>
+  );
+}
+
+function ChatView() {
+  const params = useSafeSearchParams<{ role?: string }>();
+  const role = ROLES.find(r => r.id === params.role) || ROLES[0];
+  const messages = MOCK_MESSAGES[role.id] || [];
+  const [input, setInput] = useState('');
+
+  return (
+    <Screen>
+      {/* Header */}
+      <View className="px-6 pt-12 pb-4 flex-row items-center gap-3" style={{ backgroundColor: role.color }}>
+        <Text className="text-2xl">{role.icon}</Text>
+        <View>
+          <Text className="text-white font-bold text-lg">{role.name}</Text>
+          <Text className="text-white/80 text-xs">{role.desc}</Text>
+        </View>
+      </View>
+
+      {/* Messages */}
+      <ScrollView className="flex-1 bg-stone-50 px-4 py-4" showsVerticalScrollIndicator={false}>
+        <View className="gap-4">
+          {messages.map((msg, i) => (
+            <View key={i}>
+              {msg.from === 'ai' ? (
+                <View>
+                  <View className="max-w-[85%] rounded-2xl rounded-tl-sm px-4 py-3" style={{ backgroundColor: role.bg, borderLeftWidth: 3, borderLeftColor: role.color }}>
+                    <Text className="text-stone-800 text-sm leading-5">{msg.text}</Text>
+                  </View>
+                  {msg.confidence && (
+                    <View className="flex-row items-center gap-1 mt-1.5 ml-1">
+                      <FontAwesome6 name="robot" size={12} color="#9CA3AF" />
+                      <Text className="text-stone-400 text-xs">AI 生成 · 置信度 {msg.confidence}%</Text>
+                    </View>
+                  )}
+                </View>
+              ) : (
+                <View className="self-end max-w-[85%]">
+                  <View className="bg-blue-50 rounded-2xl rounded-tr-sm px-4 py-3">
+                    <Text className="text-stone-800 text-sm leading-5">{msg.text}</Text>
+                  </View>
+                </View>
+              )}
+            </View>
+          ))}
+        </View>
+      </ScrollView>
+
+      {/* Input */}
+      <View className="bg-white px-4 py-3 flex-row items-center gap-3" style={{ borderTopWidth: 1, borderTopColor: '#F3F4F6' }}>
+        <TextInput
+          className="flex-1 bg-stone-100 rounded-xl px-4 py-2.5 text-sm text-stone-800"
+          placeholder="输入消息..."
+          placeholderTextColor="#9CA3AF"
+          value={input}
+          onChangeText={setInput}
+          multiline
+        />
+        <TouchableOpacity className="w-10 h-10 rounded-full items-center justify-center" style={{ backgroundColor: role.color }}>
+          <FontAwesome6 name="paper-plane" size={16} color="#fff" />
+        </TouchableOpacity>
+      </View>
+    </Screen>
+  );
 }
 
 export default function ChatScreen() {
-  const { student } = useAuth();
-  const router = useSafeRouter();
-  const [selectedRole, setSelectedRole] = useState<string | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [inputText, setInputText] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [chatHistory, setChatHistory] = useState<any[]>([]);
-  const flatListRef = useRef<FlatList>(null);
-  const BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL;
-
-  // Load chat history when role is selected
-  useEffect(() => {
-    if (!student || !selectedRole) return;
-    fetch(`${BASE_URL}/api/v1/student/${student.id}/chat/${selectedRole}/history`)
-      .then(r => r.json())
-      .then(data => {
-        if (data.conversations) {
-          setChatHistory(data.conversations);
-          // Load latest conversation messages
-          if (data.conversations.length > 0) {
-            const latest = data.conversations[0];
-            if (latest.messages) {
-              setMessages(latest.messages.map((m: any) => ({
-                id: m.id,
-                role: m.role,
-                content: m.content,
-                timestamp: new Date(m.created_at),
-              })));
-            }
-          }
-        }
-      })
-      .catch(console.error);
-  }, [student, selectedRole]);
-
-  const sendMessage = async () => {
-    if (!inputText.trim() || !student || !selectedRole) return;
-
-    const userMsg: Message = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: inputText.trim(),
-      timestamp: new Date(),
-    };
-    setMessages(prev => [...prev, userMsg]);
-    setInputText('');
-    setLoading(true);
-
-    try {
-      const res = await fetch(`${BASE_URL}/api/v1/student/${student.id}/chat/with-memory`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: inputText.trim(),
-          conversation_id: selectedRole,
-          current_moment: 'practice_plateau',
-          role: selectedRole,
-        }),
-      });
-      const data = await res.json();
-
-      if (data.reply) {
-        const assistantMsg: Message = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: data.reply,
-          timestamp: new Date(),
-        };
-        setMessages(prev => [...prev, assistantMsg]);
-      }
-    } catch (e) {
-      console.error('Chat failed:', e);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const currentRole = AI_ROLES.find(r => r.id === selectedRole);
-
-  // Role selection view
-  if (!selectedRole) {
-    return (
-      <Screen>
-        <ScrollView className="flex-1 bg-stone-50" showsVerticalScrollIndicator={false}>
-          <View className="px-6 pt-12 pb-8">
-            <Text className="text-stone-800 text-2xl font-bold mb-2">AI 对话</Text>
-            <Text className="text-stone-500 text-sm mb-6">选择你的 AI 伙伴</Text>
-
-            {AI_ROLES.map((role) => (
-              <TouchableOpacity
-                key={role.id}
-                onPress={() => setSelectedRole(role.id)}
-                className="bg-white rounded-2xl p-5 mb-3 flex-row items-center"
-                style={{ shadowColor: role.color, shadowOpacity: 0.08, shadowRadius: 8, elevation: 3 }}
-              >
-                <View className="w-14 h-14 rounded-2xl items-center justify-center mr-4" style={{ backgroundColor: role.bg }}>
-                  <FontAwesome6 name={role.icon} size={24} color={role.color} />
-                </View>
-                <View className="flex-1">
-                  <View className="flex-row items-center mb-1">
-                    <Text className="text-stone-800 font-bold text-base mr-2">{role.name}</Text>
-                    <View className="px-2 py-0.5 rounded-full" style={{ backgroundColor: role.bg }}>
-                      <Text className="text-xs font-semibold" style={{ color: role.color }}>{role.title}</Text>
-                    </View>
-                  </View>
-                  <Text className="text-stone-500 text-sm">{role.desc}</Text>
-                </View>
-                <FontAwesome6 name="chevron-right" size={14} color="#A8A29E" />
-              </TouchableOpacity>
-            ))}
-
-            {/* Teacher messages entry */}
-            <TouchableOpacity
-              onPress={() => undefined}
-              className="bg-white rounded-2xl p-5 flex-row items-center mt-4 border border-amber-100"
-              style={{ shadowColor: '#D97706', shadowOpacity: 0.08, shadowRadius: 8, elevation: 3 }}
-            >
-              <View className="w-14 h-14 rounded-2xl bg-amber-50 items-center justify-center mr-4">
-                <FontAwesome6 name="chalkboard-user" size={24} color="#D97706" />
-              </View>
-              <View className="flex-1">
-                <Text className="text-stone-800 font-bold text-base">教师消息</Text>
-                <Text className="text-stone-500 text-sm">查看老师的反馈和建议</Text>
-              </View>
-              <FontAwesome6 name="chevron-right" size={14} color="#A8A29E" />
-            </TouchableOpacity>
-          </View>
-        </ScrollView>
-      </Screen>
-    );
-  }
-
-  // Chat view
-  return (
-    <Screen>
-      <KeyboardAvoidingView className="flex-1 bg-stone-50" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        {/* Header */}
-        <View className="flex-row items-center px-6 pt-12 pb-4 bg-white border-b border-stone-100">
-          <TouchableOpacity onPress={() => setSelectedRole(null)} className="mr-4">
-            <FontAwesome6 name="chevron-left" size={18} color="#44403C" />
-          </TouchableOpacity>
-          <View className="w-10 h-10 rounded-xl items-center justify-center mr-3" style={{ backgroundColor: currentRole?.bg }}>
-            <FontAwesome6 name={currentRole?.icon as any} size={18} color={currentRole?.color} />
-          </View>
-          <View>
-            <Text className="text-stone-800 font-bold text-base">{currentRole?.name}</Text>
-            <Text className="text-stone-400 text-xs">{currentRole?.title}</Text>
-          </View>
-        </View>
-
-        {/* Messages */}
-        <FlatList
-          ref={flatListRef}
-          data={messages}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={{ padding: 16, flexGrow: 1 }}
-          renderItem={({ item }) => (
-            <View className={`mb-3 ${item.role === 'user' ? 'items-end' : 'items-start'}`}>
-              <View className={`max-w-[80%] rounded-2xl px-4 py-3 ${item.role === 'user' ? 'bg-indigo-600' : 'bg-white'}`}
-                style={item.role === 'assistant' ? { shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 4, elevation: 1 } : undefined}>
-                <Text className={`text-sm leading-5 ${item.role === 'user' ? 'text-white' : 'text-stone-700'}`}>
-                  {item.content}
-                </Text>
-              </View>
-              <Text className="text-stone-400 text-[10px] mt-1 mx-1">
-                {item.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </Text>
-            </View>
-          )}
-          ListEmptyComponent={
-            <View className="flex-1 items-center justify-center py-12">
-              <View className="w-16 h-16 rounded-full items-center justify-center mb-4" style={{ backgroundColor: currentRole?.bg }}>
-                <FontAwesome6 name={currentRole?.icon as any} size={24} color={currentRole?.color as string} />
-              </View>
-              <Text className="text-stone-500 text-sm text-center">
-                你好！我是 {currentRole?.name}，{currentRole?.desc}。{'\n'}有什么可以帮你的？
-              </Text>
-            </View>
-          }
-          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-        />
-
-        {loading && (
-          <View className="px-4 pb-2 items-start">
-            <View className="bg-white rounded-2xl px-4 py-3" style={{ shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 4, elevation: 1 }}>
-              <Text className="text-stone-400 text-sm">{currentRole?.name} 正在思考...</Text>
-            </View>
-          </View>
-        )}
-
-        {/* Input */}
-        <View className="bg-white border-t border-stone-100 px-4 py-3 pb-6">
-          <View className="flex-row items-center gap-2">
-            <TextInput
-              className="flex-1 bg-stone-100 rounded-xl px-4 py-3 text-stone-800 text-sm"
-              placeholder={`向 ${currentRole?.name} 提问...`}
-              placeholderTextColor="#A8A29E"
-              value={inputText}
-              onChangeText={setInputText}
-              onSubmitEditing={sendMessage}
-              returnKeyType="send"
-            />
-            <TouchableOpacity
-              onPress={sendMessage}
-              disabled={!inputText.trim()}
-              className={`w-10 h-10 rounded-xl items-center justify-center ${inputText.trim() ? 'bg-indigo-600' : 'bg-stone-200'}`}
-            >
-              <FontAwesome6 name="paper-plane" size={14} color={inputText.trim() ? 'white' : '#A8A29E'} />
-            </TouchableOpacity>
-          </View>
-        </View>
-      </KeyboardAvoidingView>
-    </Screen>
-  );
+  const params = useSafeSearchParams<{ role?: string }>();
+  return params.role ? <ChatView /> : <RoleList />;
 }

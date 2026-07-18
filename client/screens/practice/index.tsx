@@ -1,173 +1,140 @@
-import { useState } from 'react';
-import { View, Text, ScrollView, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { Screen } from '@/components/Screen';
-import { useAuth } from '@/contexts/AuthContext';
+import { useSafeRouter } from '@/hooks/useSafeRouter';
 import { FontAwesome6 } from '@expo/vector-icons';
 
-const TASKS = [
-  { id: '1', title: 'Task 2: 教育类议论文', type: 'writing', difficulty: 'medium', duration: 40 },
-  { id: '2', title: 'Task 1: 柱状图描述', type: 'writing', difficulty: 'easy', duration: 20 },
-  { id: '3', title: 'Part 2: 描述一个地方', type: 'speaking', difficulty: 'medium', duration: 2 },
+const RECOMMENDED = [
+  {
+    id: '1', tag: 'TR', title: 'Task Response 专项', subtitle: 'K3 论点展开深度',
+    desc: '针对你的薄弱点：论点展开度 0.31 → 目标 0.5',
+    mastery: 0.31, target: 0.5, time: '15 分钟', difficulty: '中等',
+    badge: '推荐', badgeColor: '#3B82F6', color: '#3B82F6', bg: '#EFF6FF',
+  },
+  {
+    id: '2', tag: 'CC', title: 'Coherence & Cohesion', subtitle: '段落连接词使用',
+    desc: '提升文章逻辑衔接，从 Band 5.5 → 6.0',
+    mastery: 0.55, target: 0.7, time: '20 分钟', difficulty: '较难',
+    badge: '新', badgeColor: '#8B5CF6', color: '#8B5CF6', bg: '#F5F3FF',
+  },
+  {
+    id: '3', tag: 'LR', title: 'Lexical Resource', subtitle: '学术词汇替换',
+    desc: '巩固已学词汇，防止遗忘',
+    mastery: 0.72, target: 0.85, time: '10 分钟', difficulty: '简单',
+    badge: '复习', badgeColor: '#10B981', color: '#10B981', bg: '#ECFDF5',
+  },
+];
+
+const HISTORY = [
+  { id: '1', tag: 'TR', date: '7月17日', title: '写作练习', band: '5.5', color: '#10B981' },
+  { id: '2', tag: 'GR', date: '7月15日', title: '写作练习', band: '6.0', color: '#10B981' },
 ];
 
 export default function PracticeScreen() {
-  const { student } = useAuth();
-  const BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL;
-  const [selectedTask, setSelectedTask] = useState<string | null>(null);
-  const [content, setContent] = useState('');
-  const [wordCount, setWordCount] = useState(0);
-  const [timer, setTimer] = useState(0);
-  const [isWriting, setIsWriting] = useState(false);
-  const [scaffoldLevel, setScaffoldLevel] = useState(0);
-
-  const handleTextChange = (text: string) => {
-    setContent(text);
-    setWordCount(text.split(/\s+/).filter(w => w.length > 0).length);
-  };
-
-  const handleSubmit = async () => {
-    if (!student || !selectedTask || !content.trim()) return;
-    try {
-      const res = await fetch(`${BASE_URL}/api/v1/student/${student.id}/practice-sessions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ task_id: selectedTask, content }),
-      });
-      const data = await res.json();
-      if (data.session) {
-        // Navigate to diagnosis
-      }
-    } catch (err) {
-      console.error('Submit error:', err);
-    }
-  };
-
-  if (isWriting && selectedTask) {
-    return (
-      <Screen>
-        <View className="flex-1 bg-stone-50">
-          {/* Writing header */}
-          <View className="px-6 pt-12 pb-4 bg-white border-b border-stone-200">
-            <View className="flex-row items-center justify-between">
-              <TouchableOpacity onPress={() => setIsWriting(false)}>
-                <FontAwesome6 name="arrow-left" size={20} color="#44403c" />
-              </TouchableOpacity>
-              <View className="flex-row items-center gap-4">
-                <View className="flex-row items-center gap-1">
-                  <FontAwesome6 name="clock" size={12} color="#78716c" />
-                  <Text className="text-stone-600 text-sm">{Math.floor(timer / 60)}:{(timer % 60).toString().padStart(2, '0')}</Text>
-                </View>
-                <Text className="text-stone-600 text-sm">{wordCount} 词</Text>
-              </View>
-            </View>
-          </View>
-
-          {/* Writing area */}
-          <ScrollView className="flex-1 px-6 py-4">
-            <View className="bg-white rounded-2xl p-4 mb-4" style={{ shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 }}>
-              <Text className="text-stone-800 font-bold text-base mb-2">
-                {TASKS.find(t => t.id === selectedTask)?.title}
-              </Text>
-              <Text className="text-stone-500 text-sm">
-                Some people believe that technology has made our lives more complex. To what extent do you agree or disagree?
-              </Text>
-            </View>
-
-            <TextInput
-              style={styles.editor}
-              multiline
-              placeholder="Start writing here..."
-              placeholderTextColor="#a8a29e"
-              value={content}
-              onChangeText={handleTextChange}
-              textAlignVertical="top"
-            />
-          </ScrollView>
-
-          {/* Scaffold panel */}
-          <View className="px-6 py-4 bg-white border-t border-stone-200">
-            <Text className="text-stone-500 text-xs mb-2">需要帮助？</Text>
-            <View className="flex-row gap-2">
-              <TouchableOpacity
-                onPress={() => setScaffoldLevel(1)}
-                className="flex-1 bg-amber-50 rounded-xl py-2 items-center"
-              >
-                <Text className="text-amber-700 text-xs font-medium">给提示</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setScaffoldLevel(2)}
-                className="flex-1 bg-indigo-50 rounded-xl py-2 items-center"
-              >
-                <Text className="text-indigo-700 text-xs font-medium">看示范</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handleSubmit}
-                className="flex-1 bg-indigo-500 rounded-xl py-2 items-center"
-              >
-                <Text className="text-white text-xs font-medium">提交</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Screen>
-    );
-  }
+  const router = useSafeRouter();
 
   return (
     <Screen>
       <ScrollView className="flex-1 bg-stone-50" showsVerticalScrollIndicator={false}>
-        <View className="px-6 pt-12 pb-6">
-          <Text className="text-stone-800 text-2xl font-bold mb-2">练习</Text>
-          <Text className="text-stone-500 text-sm mb-6">选择一项练习开始</Text>
+        {/* Header */}
+        <View className="px-6 pt-12 pb-4 flex-row items-center justify-between">
+          <Text className="text-stone-900 font-bold text-xl">今日练习</Text>
+          <Text className="text-stone-400 text-sm">7月18日</Text>
+        </View>
 
-          {/* Task list */}
-          <View className="gap-3">
-            {TASKS.map(task => (
-              <TouchableOpacity
-                key={task.id}
-                className="bg-white rounded-2xl p-4"
-                style={{ shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 }}
-                onPress={() => {
-                  setSelectedTask(task.id);
-                  setIsWriting(true);
-                }}
-              >
-                <View className="flex-row items-center">
-                  <View className="w-10 h-10 rounded-xl bg-indigo-50 items-center justify-center mr-3">
-                    <FontAwesome6 name={task.type === 'writing' ? 'pen' : 'microphone'} size={16} color="#6366f1" />
+        {/* Stats */}
+        <View className="px-6 mb-6 flex-row gap-3">
+          {[
+            { value: '1', unit: '次', label: '已完成', color: '#10B981' },
+            { value: '7', unit: '天', label: '连续打卡', color: '#F59E0B' },
+            { value: '4', unit: '篇', label: '本周练习', color: '#3B82F6' },
+          ].map(s => (
+            <View key={s.label} className="flex-1 bg-white rounded-2xl p-4 items-center"
+              style={{ shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 8, elevation: 1 }}>
+              <Text className="font-bold text-2xl" style={{ color: s.color }}>{s.value}</Text>
+              <Text className="text-stone-400 text-xs">{s.unit} {s.label}</Text>
+            </View>
+          ))}
+        </View>
+
+        {/* Recommended */}
+        <Text className="text-stone-900 font-bold text-base px-6 mb-3">推荐练习</Text>
+        <View className="px-6 gap-3 mb-6">
+          {RECOMMENDED.map(item => (
+            <TouchableOpacity
+              key={item.id}
+              className="bg-white rounded-2xl p-5"
+              style={{ shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 8, elevation: 1 }}
+              onPress={() => router.push('/practice')}
+            >
+              <View className="flex-row items-start justify-between mb-2">
+                <View className="flex-row items-center gap-2 flex-1">
+                  <View className="w-10 h-10 rounded-xl items-center justify-center" style={{ backgroundColor: item.bg }}>
+                    <Text className="font-bold text-sm" style={{ color: item.color }}>{item.tag}</Text>
                   </View>
                   <View className="flex-1">
-                    <Text className="text-stone-800 font-semibold text-sm">{task.title}</Text>
-                    <View className="flex-row items-center gap-3 mt-1">
-                      <Text className="text-stone-400 text-xs">{task.duration} 分钟</Text>
-                      <Text className="text-stone-400 text-xs">
-                        难度: {task.difficulty === 'easy' ? '简单' : task.difficulty === 'medium' ? '中等' : '困难'}
-                      </Text>
-                    </View>
+                    <Text className="text-stone-900 font-bold text-base">{item.title}</Text>
+                    <Text className="text-stone-400 text-xs">{item.subtitle}</Text>
                   </View>
-                  <FontAwesome6 name="chevron-right" size={14} color="#a8a29e" />
                 </View>
-              </TouchableOpacity>
-            ))}
-          </View>
+                <View className="px-2.5 py-1 rounded-full" style={{ backgroundColor: item.badgeColor + '15' }}>
+                  <Text className="text-xs font-medium" style={{ color: item.badgeColor }}>{item.badge}</Text>
+                </View>
+              </View>
+
+              <Text className="text-stone-600 text-sm mb-3">{item.desc}</Text>
+
+              <View className="mb-3">
+                <View className="flex-row justify-between mb-1">
+                  <Text className="text-stone-500 text-xs">当前掌握度</Text>
+                  <Text className="text-stone-500 text-xs">{item.mastery} → 目标 {item.target}</Text>
+                </View>
+                <View className="h-2 bg-stone-100 rounded-full overflow-hidden">
+                  <View className="h-full rounded-full" style={{ width: `${item.mastery * 100}%`, backgroundColor: item.color }} />
+                </View>
+              </View>
+
+              <View className="flex-row items-center justify-between">
+                <View className="flex-row items-center gap-3">
+                  <View className="flex-row items-center gap-1">
+                    <FontAwesome6 name="clock" size={12} color="#9CA3AF" />
+                    <Text className="text-stone-400 text-xs">{item.time}</Text>
+                  </View>
+                  <View className="flex-row items-center gap-1">
+                    <FontAwesome6 name="bullseye" size={12} color="#9CA3AF" />
+                    <Text className="text-stone-400 text-xs">{item.difficulty}</Text>
+                  </View>
+                </View>
+                <TouchableOpacity className="bg-blue-600 rounded-xl px-4 py-2 flex-row items-center gap-1.5"
+                  onPress={() => router.push('/practice')}>
+                  <FontAwesome6 name="bolt" size={12} color="#fff" />
+                  <Text className="text-white text-xs font-medium">开始</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* History */}
+        <Text className="text-stone-900 font-bold text-base px-6 mb-3">历史练习</Text>
+        <View className="px-6 pb-8 gap-2">
+          {HISTORY.map(item => (
+            <TouchableOpacity
+              key={item.id}
+              className="bg-white rounded-2xl px-5 py-4 flex-row items-center"
+              style={{ shadowColor: '#000', shadowOpacity: 0.02, shadowRadius: 6, elevation: 1 }}
+            >
+              <View className="w-10 h-10 rounded-xl bg-blue-50 items-center justify-center mr-3">
+                <Text className="font-bold text-xs text-blue-600">{item.tag}</Text>
+              </View>
+              <View className="flex-1">
+                <Text className="text-stone-700 text-sm">{item.date} · {item.title}</Text>
+                <Text className="font-bold text-sm" style={{ color: item.color }}>Band {item.band}</Text>
+              </View>
+              <FontAwesome6 name="chevron-right" size={14} color="#D1D5DB" />
+            </TouchableOpacity>
+          ))}
         </View>
       </ScrollView>
     </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  editor: {
-    minHeight: 300,
-    fontSize: 16,
-    lineHeight: 24,
-    color: '#1c1917',
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-});

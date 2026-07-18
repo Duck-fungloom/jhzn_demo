@@ -37,7 +37,7 @@ export default function SettingsScreen() {
       .then(data => {
         if (data.prefs) setPrefs({ ...prefs, ...data.prefs });
       })
-      .catch(console.error);
+      .catch((e) => console.warn("Settings error:", e));
   });
 
   const togglePref = async (key: keyof NotifPrefs, value: boolean | string) => {
