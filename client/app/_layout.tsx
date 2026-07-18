@@ -17,7 +17,6 @@ function AuthRedirect() {
     if (isLoading) return;
 
     const inLogin = segments.includes('login');
-    const inOnboarding = segments.includes('onboarding');
 
     if (!student && !inLogin) {
       router.replace('/login');
@@ -45,8 +44,10 @@ export default function RootLayout() {
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="login" />
           <Stack.Screen name="onboarding" />
-          <Stack.Screen name="teacher" />
-          <Stack.Screen name="moment/[id]" />
+          <Stack.Screen name="diagnosis" />
+          <Stack.Screen name="night" />
+          <Stack.Screen name="settings" />
+          <Stack.Screen name="comparison" />
         </Stack>
       </Provider>
     </SafeAreaProvider>

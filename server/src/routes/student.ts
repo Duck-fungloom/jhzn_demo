@@ -11,7 +11,7 @@ router.get('/:id/profile', async (req, res) => {
 
     const { data: student, error: studentErr } = await db
       .from('students')
-      .select('id, phone, name, target_band, exam_date, timezone, onboarded, last_active_at, created_at')
+      .select('id, phone, name, target_band, exam_date, timezone, onboarding_completed, created_at')
       .eq('id', id)
       .maybeSingle();
     if (studentErr) throw studentErr;
@@ -27,9 +27,8 @@ router.get('/:id/profile', async (req, res) => {
       .maybeSingle();
     if (portraitErr) throw portraitErr;
 
-    await db.from('students').update({ last_active_at: new Date().toISOString() }).eq('id', id);
-
-    res.json({ student, portrait });
+    const studentData = { ...student, onboarded: student.onboarding_completed };
+    res.json({ student: studentData, portrait });
   } catch (err) {
     console.error('Profile error:', err);
     res.status(500).json({ error: '获取档案失败' });

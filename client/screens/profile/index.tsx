@@ -66,7 +66,7 @@ export default function ProfileScreen() {
           <View className="flex-row items-center justify-between mb-6">
             <Text className="text-stone-800 text-2xl font-bold">我的</Text>
             <TouchableOpacity
-              onPress={() => {}}
+              onPress={() => router.push('/settings')}
               className="w-10 h-10 rounded-full bg-white items-center justify-center"
               style={{ shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 4, elevation: 1 }}
             >

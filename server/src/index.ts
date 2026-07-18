@@ -70,17 +70,24 @@ app.post('/api/v1/auth/login', async (req, res) => {
       .from('student_moment_history')
       .insert({
         student_id: newStudent.id,
-        from_moment: null,
-        to_moment: 'entry_confusion',
+        moment: 'entry_confusion',
         trigger_reason: '学生注册',
-        snapshot: { total_practices: 0, anxiety_level: 40 },
       });
     if (historyErr) throw historyErr;
 
     // Create default notification prefs
     const { error: prefsErr } = await db
       .from('student_notification_prefs')
-      .insert({ student_id: newStudent.id });
+      .insert({
+        student_id: newStudent.id,
+        morning_enabled: true,
+        midday_enabled: true,
+        evening_enabled: true,
+        morning_time: '07:00',
+        midday_time: '10:00',
+        evening_time: '20:00',
+        weekend_mode: 'evening_only',
+      });
     if (prefsErr) throw prefsErr;
 
     res.json({ student: { ...newStudent, onboarded: newStudent.onboarding_completed }, isNew: true });

@@ -40,9 +40,27 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: '时刻',
+          title: '首页',
           tabBarIcon: ({ color }) => (
-            <FontAwesome6 name="road" size={18} color={color} />
+            <FontAwesome6 name="house" size={18} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="practice"
+        options={{
+          title: '练习',
+          tabBarIcon: ({ color }) => (
+            <FontAwesome6 name="pen" size={18} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="knowledge"
+        options={{
+          title: '知识',
+          tabBarIcon: ({ color }) => (
+            <FontAwesome6 name="map" size={18} color={color} />
           ),
         }}
       />
