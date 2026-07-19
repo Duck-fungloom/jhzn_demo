@@ -432,6 +432,161 @@ router.get('/:id/practice-sessions/:sessionId/comparison', async (req, res) => {
 
 // ============ Diagnosis Routes ============
 
+// GET /api/v1/student/:id/diagnosis/compare - Compare two diagnosis results (MUST be before /:sessionId)
+router.get('/:id/diagnosis/compare', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { currentId, previousId } = req.query as { currentId: string; previousId: string };
+    const db = getSupabaseClient();
+
+    if (!currentId || !previousId) {
+      return res.status(400).json({ error: '缺少 currentId 或 previousId 参数' });
+    }
+
+    // Get current diagnosis
+    const { data: currentDiag, error: currentError } = await db
+      .from('diagnosis_results')
+      .select('*')
+      .eq('id', currentId)
+      .eq('student_id', id)
+      .maybeSingle();
+
+    if (currentError) throw currentError;
+    if (!currentDiag) {
+      return res.status(404).json({ error: '当前诊断记录不存在' });
+    }
+
+    // Get previous diagnosis
+    const { data: previousDiag, error: previousError } = await db
+      .from('diagnosis_results')
+      .select('*')
+      .eq('id', previousId)
+      .eq('student_id', id)
+      .maybeSingle();
+
+    if (previousError) throw previousError;
+    if (!previousDiag) {
+      return res.status(404).json({ error: '对比诊断记录不存在' });
+    }
+
+    // Calculate changes
+    const dimensions = [
+      { key: 'task_response_band', label: 'TR', name: '任务回应' },
+      { key: 'coherence_cohesion_band', label: 'CC', name: '连贯衔接' },
+      { key: 'lexical_resource_band', label: 'LR', name: '词汇资源' },
+      { key: 'grammatical_range_band', label: 'GR', name: '语法范围' },
+    ];
+
+    const comparison = dimensions.map((dim) => {
+      const current = currentDiag[dim.key as keyof typeof currentDiag] as number;
+      const previous = previousDiag[dim.key as keyof typeof previousDiag] as number;
+      const change = current - previous;
+      return {
+        dimension: dim.key,
+        label: dim.label,
+        name: dim.name,
+        current,
+        previous,
+        change,
+        trend: change > 0 ? 'up' : change < 0 ? 'down' : 'stable',
+      };
+    });
+
+    // Calculate overall average band
+    const currentAvg = (comparison.reduce((sum, d) => sum + d.current, 0) / 4).toFixed(1);
+    const previousAvg = (comparison.reduce((sum, d) => sum + d.previous, 0) / 4).toFixed(1);
+
+    // Get subskill mastery comparison if available
+    const currentSubskills = (currentDiag.subskill_mastery as Record<string, number>) || {};
+    const previousSubskills = (previousDiag.subskill_mastery as Record<string, number>) || {};
+
+    const subskillComparison = Object.entries(currentSubskills).map(([skillId, currentLevel]) => {
+      const previousLevel = previousSubskills[skillId] || 0;
+      const change = currentLevel - previousLevel;
+      return {
+        skillId,
+        current: currentLevel,
+        previous: previousLevel,
+        change,
+        trend: change > 0.05 ? 'up' : change < -0.05 ? 'down' : 'stable',
+      };
+    });
+
+    res.json({
+      current: {
+        id: currentDiag.id,
+        date: currentDiag.created_at,
+        soloLevel: currentDiag.solo_level,
+        bands: {
+          TR: currentDiag.task_response_band,
+          CC: currentDiag.coherence_cohesion_band,
+          LR: currentDiag.lexical_resource_band,
+          GR: currentDiag.grammatical_range_band,
+        },
+        average: parseFloat(currentAvg),
+      },
+      previous: {
+        id: previousDiag.id,
+        date: previousDiag.created_at,
+        soloLevel: previousDiag.solo_level,
+        bands: {
+          TR: previousDiag.task_response_band,
+          CC: previousDiag.coherence_cohesion_band,
+          LR: previousDiag.lexical_resource_band,
+          GR: previousDiag.grammatical_range_band,
+        },
+        average: parseFloat(previousAvg),
+      },
+      comparison,
+      subskillComparison,
+      summary: {
+        improved: comparison.filter((d) => d.change > 0).length,
+        declined: comparison.filter((d) => d.change < 0).length,
+        stable: comparison.filter((d) => d.change === 0).length,
+        overallChange: parseFloat(currentAvg) - parseFloat(previousAvg),
+      },
+    });
+  } catch (err) {
+    console.error('Diagnosis compare error:', err);
+    res.status(500).json({ error: '对比诊断失败' });
+  }
+});
+
+// GET /api/v1/student/:id/diagnosis/list - Get all diagnosis results for comparison (MUST be before /:sessionId)
+router.get('/:id/diagnosis/list', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const db = getSupabaseClient();
+
+    const { data: diagnoses, error } = await db
+      .from('diagnosis_results')
+      .select('id, task_response_band, coherence_cohesion_band, lexical_resource_band, grammatical_range_band, solo_level, created_at')
+      .eq('student_id', id)
+      .order('created_at', { ascending: false })
+      .limit(10);
+
+    if (error) throw error;
+
+    const list = (diagnoses || []).map((d) => ({
+      id: d.id,
+      date: d.created_at,
+      soloLevel: d.solo_level,
+      bands: {
+        TR: d.task_response_band,
+        CC: d.coherence_cohesion_band,
+        LR: d.lexical_resource_band,
+        GR: d.grammatical_range_band,
+      },
+      average: ((d.task_response_band + d.coherence_cohesion_band + d.lexical_resource_band + d.grammatical_range_band) / 4).toFixed(1),
+    }));
+
+    res.json({ diagnoses: list });
+  } catch (err) {
+    console.error('Diagnosis list error:', err);
+    res.status(500).json({ error: '获取诊断列表失败' });
+  }
+});
+
 // GET /api/v1/student/:id/diagnosis/:sessionId - Get diagnosis report
 router.get('/:id/diagnosis/:sessionId', async (req, res) => {
   try {
@@ -1004,6 +1159,196 @@ router.get('/:id/llm-status', async (_req, res) => {
   } catch (err) {
     console.error('LLM status error:', err);
     res.status(500).json({ error: '获取LLM状态失败' });
+  }
+});
+
+// ============ Moments Routes ============
+
+// Moment unlock conditions
+const MOMENT_CONDITIONS = {
+  entry_confusion: { type: 'always' as const },
+  first_exam_shock: { type: 'diagnosis_completed' as const },
+  knowledge_island: { type: 'practice_count' as const, required: 5 },
+  practice_plateau: { type: 'diagnosis_completed' as const },
+  output_helpless: { type: 'practice_count' as const, required: 10 },
+  pre_exam_panic: { type: 'days_before_exam' as const, days: 14 },
+  pre_exam_insomnia: { type: 'days_before_exam' as const, days: 3 },
+  post_exam_recovery: { type: 'after_exam' as const },
+};
+
+// GET /api/v1/student/:id/moments - Get moments with unlock status
+router.get('/:id/moments', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const db = getSupabaseClient();
+
+    // Get student info
+    const { data: student, error: studentErr } = await db
+      .from('students')
+      .select('id, exam_date, created_at')
+      .eq('id', id)
+      .maybeSingle();
+    if (studentErr) throw studentErr;
+    if (!student) {
+      res.status(404).json({ error: '学生不存在' });
+      return;
+    }
+
+    // Get portrait for current_moment
+    const { data: portrait } = await db
+      .from('student_portraits')
+      .select('current_moment')
+      .eq('student_id', id)
+      .maybeSingle();
+
+    // Count practice sessions
+    const { count: practiceCount } = await db
+      .from('practice_sessions')
+      .select('*', { count: 'exact', head: true })
+      .eq('student_id', id)
+      .eq('status', 'submitted');
+
+    // Count diagnosis results
+    const { count: diagnosisCount } = await db
+      .from('diagnosis_results')
+      .select('*', { count: 'exact', head: true })
+      .eq('student_id', id);
+
+    // Calculate days until exam
+    const now = new Date();
+    const examDate = student.exam_date ? new Date(student.exam_date) : null;
+    const daysUntilExam = examDate 
+      ? Math.ceil((examDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+      : null;
+    const isAfterExam = examDate ? examDate < now : false;
+
+    // Calculate unlock status for each moment
+    const moments = [
+      { id: 'entry_confusion', num: '①', label: '入门迷茫期', color: '#2563EB' },
+      { id: 'first_exam_shock', num: '②', label: '首次模考打击', color: '#EF4444' },
+      { id: 'knowledge_island', num: '③', label: '知识点孤岛期', color: '#8B5CF6' },
+      { id: 'practice_plateau', num: '④', label: '瓶颈突破期', color: '#F59E0B' },
+      { id: 'output_helpless', num: '⑤', label: '输出无助期', color: '#7C3AED' },
+      { id: 'pre_exam_panic', num: '⑥', label: '考前恐慌', color: '#DC2626' },
+      { id: 'pre_exam_insomnia', num: '⑦', label: '考前失眠夜', color: '#1E1B4B' },
+      { id: 'post_exam_recovery', num: '⑧', label: '考后复盘期', color: '#0891B2' },
+    ];
+
+    const momentsWithStatus = moments.map((moment) => {
+      const condition = MOMENT_CONDITIONS[moment.id as keyof typeof MOMENT_CONDITIONS];
+      let unlocked = false;
+      let progress = 0;
+      let progressText = '';
+      let required = 0;
+
+      switch (condition.type) {
+        case 'always':
+          unlocked = true;
+          progress = 100;
+          progressText = '已解锁';
+          break;
+        case 'diagnosis_completed':
+          unlocked = (diagnosisCount || 0) > 0;
+          progress = unlocked ? 100 : 0;
+          required = 1;
+          progressText = unlocked ? '已解锁' : `完成诊断后解锁 (0/1)`;
+          break;
+        case 'practice_count':
+          const count = practiceCount || 0;
+          required = condition.required;
+          unlocked = count >= required;
+          progress = Math.min(100, Math.round((count / required) * 100));
+          progressText = unlocked ? '已解锁' : `完成 ${count}/${required} 次练习后解锁`;
+          break;
+        case 'days_before_exam':
+          if (daysUntilExam === null) {
+            unlocked = false;
+            progressText = '设置考试日期后解锁';
+          } else if (daysUntilExam <= condition.days) {
+            unlocked = true;
+            progress = 100;
+            progressText = `距考试还有 ${daysUntilExam} 天`;
+          } else {
+            progress = Math.max(0, Math.round(((condition.days - daysUntilExam) / condition.days) * 100));
+            progressText = `考前 ${condition.days} 天解锁 (还需 ${daysUntilExam - condition.days} 天)`;
+          }
+          break;
+        case 'after_exam':
+          unlocked = isAfterExam;
+          progress = unlocked ? 100 : 0;
+          progressText = unlocked ? '已解锁' : '考试结束后解锁';
+          break;
+      }
+
+      return {
+        ...moment,
+        unlocked,
+        progress,
+        progressText,
+        required,
+      };
+    });
+
+    // Determine current moment (first unlocked but not completed)
+    let currentMoment = portrait?.current_moment || 'entry_confusion';
+    const currentIdx = momentsWithStatus.findIndex(m => m.id === currentMoment);
+    
+    // If current moment is not unlocked, find the first unlocked moment
+    if (currentIdx === -1 || !momentsWithStatus[currentIdx]?.unlocked) {
+      const firstUnlockedIdx = momentsWithStatus.findIndex(m => m.unlocked);
+      if (firstUnlockedIdx !== -1) {
+        currentMoment = momentsWithStatus[firstUnlockedIdx].id;
+      }
+    }
+
+    res.json({
+      moments: momentsWithStatus,
+      currentMoment,
+      stats: {
+        practiceCount: practiceCount || 0,
+        diagnosisCount: diagnosisCount || 0,
+        daysUntilExam,
+        isAfterExam,
+      },
+    });
+  } catch (err) {
+    console.error('Moments error:', err);
+    res.status(500).json({ error: '获取时刻列表失败' });
+  }
+});
+
+// PUT /api/v1/student/:id/moments/current - Update current moment
+router.put('/:id/moments/current', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { momentId } = req.body as { momentId: string };
+    const db = getSupabaseClient();
+
+    // Check if portrait exists
+    const { data: portrait } = await db
+      .from('student_portraits')
+      .select('student_id')
+      .eq('student_id', id)
+      .maybeSingle();
+
+    if (portrait) {
+      const { error } = await db
+        .from('student_portraits')
+        .update({ current_moment: momentId })
+        .eq('student_id', id);
+      if (error) throw error;
+    } else {
+      // Create portrait if not exists
+      const { error } = await db
+        .from('student_portraits')
+        .insert({ student_id: id, current_moment: momentId });
+      if (error) throw error;
+    }
+
+    res.json({ success: true, currentMoment: momentId });
+  } catch (err) {
+    console.error('Update current moment error:', err);
+    res.status(500).json({ error: '更新当前时刻失败' });
   }
 });
 
