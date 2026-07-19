@@ -595,4 +595,206 @@ router.get('/:id/night-mode/status', async (req, res) => {
   }
 });
 
+// ============ Chat Routes (SSE Streaming) ============
+
+// POST /api/v1/student/:id/chat/with-memory - Chat with memory injection (SSE stream)
+router.post('/:id/chat/with-memory', async (req, res) => {
+  const { id } = req.params;
+  const { message, conversation_id, current_moment, phase, is_night_mode, selected_role } =
+    req.body as {
+      message: string;
+      conversation_id?: string;
+      current_moment?: string;
+      phase?: string;
+      is_night_mode?: boolean;
+      selected_role?: 'coach' | 'mentor' | 'partner' | 'analyst';
+    };
+
+  if (!message?.trim()) {
+    res.status(400).json({ error: '消息不能为空' });
+    return;
+  }
+
+  // Set SSE headers
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+
+  try {
+    const db = getSupabaseClient();
+
+    // Fetch portrait for memory injection
+    const { data: portrait } = await db
+      .from('student_portraits')
+      .select('*')
+      .eq('student_id', id)
+      .maybeSingle();
+
+    // Fetch recent memories from portrait_memories table
+    const { data: memories } = await db
+      .from('portrait_memories')
+      .select('*')
+      .eq('student_id', id)
+      .eq('status', 'active')
+      .gte('confidence', 0.8)
+      .order('relevance_score', { ascending: false })
+      .limit(5);
+
+    // Fetch conversation history
+    let history: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+    if (conversation_id) {
+      const { data: convMessages } = await db
+        .from('ai_conversations')
+        .select('role, content')
+        .eq('conversation_id', conversation_id)
+        .eq('student_id', id)
+        .order('created_at', { ascending: true })
+        .limit(20);
+      if (convMessages) {
+        history = convMessages.map((m: { role: string; content: string }) => ({
+          role: m.role as 'user' | 'assistant',
+          content: m.content,
+        }));
+      }
+    }
+
+    // Import agent service dynamically
+    const { handleChatStream, getAgentInfo } = await import('../services/agentService.js');
+
+    let resolvedAgent: string = selected_role || 'coach';
+
+    await handleChatStream(
+      {
+        message,
+        conversationId: conversation_id,
+        currentMoment: current_moment || portrait?.current_moment,
+        phase,
+        isNightMode: is_night_mode,
+        selectedRole: selected_role,
+        studentId: id,
+        portrait: portrait as Record<string, unknown> | undefined,
+        memories: (memories || []) as Array<Record<string, unknown>>,
+        history,
+      },
+      // onChunk
+      (text: string) => {
+        res.write(`data: ${JSON.stringify({ type: 'chunk', content: text })}\n\n`);
+      },
+      // onDone
+      async (fullText: string, agentId: string) => {
+        resolvedAgent = agentId;
+        const agentInfo = getAgentInfo(agentId as import('../services/agentService.js').AgentId);
+
+        // Save conversation to database
+        if (conversation_id) {
+          try {
+            await db.from('ai_conversations').insert([
+              { student_id: id, conversation_id, role: 'user', content: message, agent: agentId },
+              { student_id: id, conversation_id, role: 'assistant', content: fullText, agent: agentId },
+            ]);
+          } catch (saveErr) {
+            console.error('Failed to save conversation:', saveErr);
+          }
+        }
+
+        res.write(
+          `data: ${JSON.stringify({
+            type: 'done',
+            agent: agentId,
+            agent_name: agentInfo.name,
+            agent_role: agentInfo.role,
+            agent_color: agentInfo.color,
+          })}\n\n`
+        );
+        res.write('data: [DONE]\n\n');
+        res.end();
+      },
+      // onError
+      (error: Error) => {
+        console.error('Chat stream error:', error);
+        res.write(
+          `data: ${JSON.stringify({ type: 'error', message: error.message })}\n\n`
+        );
+        res.write('data: [DONE]\n\n');
+        res.end();
+      }
+    );
+  } catch (err) {
+    console.error('Chat endpoint error:', err);
+    res.write(
+      `data: ${JSON.stringify({ type: 'error', message: '服务器内部错误' })}\n\n`
+    );
+    res.write('data: [DONE]\n\n');
+    res.end();
+  }
+});
+
+// GET /api/v1/student/:id/chat/:role/history - Get chat history for a role
+router.get('/:id/chat/:role/history', async (req, res) => {
+  try {
+    const { id, role } = req.params;
+    const db = getSupabaseClient();
+
+    const { data: conversations, error } = await db
+      .from('ai_conversations')
+      .select('*')
+      .eq('student_id', id)
+      .eq('agent', role)
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    if (error) throw error;
+    res.json({ messages: conversations || [] });
+  } catch (err) {
+    console.error('Chat history error:', err);
+    res.status(500).json({ error: '获取对话历史失败' });
+  }
+});
+
+// GET /api/v1/student/:id/notifications - Get notifications
+router.get('/:id/notifications', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { since } = req.query;
+    const db = getSupabaseClient();
+
+    let query = db
+      .from('cron_notification_logs')
+      .select('*')
+      .eq('student_id', id)
+      .order('created_at', { ascending: false })
+      .limit(20);
+
+    if (since && typeof since === 'string') {
+      query = db
+        .from('cron_notification_logs')
+        .select('*')
+        .eq('student_id', id)
+        .gt('created_at', since)
+        .order('created_at', { ascending: false })
+        .limit(20);
+    }
+
+    const { data: notifications, error } = await query;
+    if (error) throw error;
+    res.json({ notifications: notifications || [] });
+  } catch (err) {
+    console.error('Notifications error:', err);
+    res.status(500).json({ error: '获取通知失败' });
+  }
+});
+
+// GET /api/v1/student/:id/llm-status - Check LLM configuration status
+router.get('/:id/llm-status', async (_req, res) => {
+  try {
+    const { getLLMStatus } = await import('../services/llm/index.js');
+    res.json(getLLMStatus());
+  } catch (err) {
+    console.error('LLM status error:', err);
+    res.status(500).json({ error: '获取LLM状态失败' });
+  }
+});
+
 export default router;
