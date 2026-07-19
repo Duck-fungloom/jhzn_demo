@@ -503,10 +503,10 @@ router.get('/:id/commitments', async (req, res) => {
 router.post('/:id/commitments', async (req, res) => {
   try {
     const { id } = req.params;
-    const { type, target, description } = req.body as {
-      type: string;
-      target: number;
-      description: string;
+    const { title, description, target_frequency } = req.body as {
+      title: string;
+      description?: string;
+      target_frequency: number;
     };
     const db = getSupabaseClient();
 
@@ -514,11 +514,13 @@ router.post('/:id/commitments', async (req, res) => {
       .from('commitments')
       .insert({
         student_id: id,
-        type,
-        target,
-        current: 0,
-        description,
+        title,
+        description: description || '',
+        target_frequency,
+        completed_count: 0,
+        checkin_count: 0,
         status: 'active',
+        started_at: new Date().toISOString(),
       })
       .select()
       .single();
@@ -528,6 +530,157 @@ router.post('/:id/commitments', async (req, res) => {
   } catch (err) {
     console.error('Create commitment error:', err);
     res.status(500).json({ error: '创建承诺失败' });
+  }
+});
+
+// POST /api/v1/student/:id/commitments/:commitmentId/checkin - Check in commitment
+router.post('/:id/commitments/:commitmentId/checkin', async (req, res) => {
+  try {
+    const { id, commitmentId } = req.params;
+    const db = getSupabaseClient();
+
+    // Get current commitment
+    const { data: commitment, error: fetchError } = await db
+      .from('commitments')
+      .select('*')
+      .eq('id', commitmentId)
+      .eq('student_id', id)
+      .single();
+
+    if (fetchError || !commitment) {
+      res.status(404).json({ error: '承诺不存在' });
+      return;
+    }
+
+    const newCheckinCount = (commitment.checkin_count || 0) + 1;
+    const isCompleted = newCheckinCount >= commitment.target_frequency;
+
+    const { data: updated, error: updateError } = await db
+      .from('commitments')
+      .update({
+        checkin_count: newCheckinCount,
+        completed_count: isCompleted ? (commitment.completed_count || 0) + 1 : commitment.completed_count,
+        status: isCompleted ? 'completed' : commitment.status,
+        ended_at: isCompleted ? new Date().toISOString() : null,
+      })
+      .eq('id', commitmentId)
+      .select()
+      .single();
+
+    if (updateError) throw updateError;
+    res.json({ commitment: updated });
+  } catch (err) {
+    console.error('Checkin error:', err);
+    res.status(500).json({ error: '打卡失败' });
+  }
+});
+
+// ============ Progress Routes ============
+
+// GET /api/v1/student/:id/progress - Get progress statistics
+router.get('/:id/progress', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const db = getSupabaseClient();
+
+    // Get all practice sessions for statistics
+    const { data: sessions, error: sessionsError } = await db
+      .from('practice_sessions')
+      .select('*')
+      .eq('student_id', id)
+      .order('created_at', { ascending: true });
+
+    if (sessionsError) throw sessionsError;
+
+    // Get all diagnosis results for trend
+    const { data: diagnoses, error: diagError } = await db
+      .from('diagnosis_results')
+      .select('*')
+      .eq('student_id', id)
+      .order('created_at', { ascending: true });
+
+    if (diagError) throw diagError;
+
+    // Calculate statistics
+    const totalSessions = sessions?.length || 0;
+    const totalWords = sessions?.reduce((sum, s) => sum + (s.word_count || 0), 0) || 0;
+    const totalMinutes = sessions?.reduce((sum, s) => {
+      if (s.started_at && s.completed_at) {
+        const diff = new Date(s.completed_at).getTime() - new Date(s.started_at).getTime();
+        return sum + Math.floor(diff / 60000);
+      }
+      return sum;
+    }, 0) || 0;
+
+    // Calculate streak (consecutive days with practice)
+    const practiceDays = new Set(
+      sessions?.map(s => new Date(s.created_at).toDateString()) || []
+    );
+    let streak = 0;
+    const today = new Date();
+    for (let i = 0; i < 365; i++) {
+      const checkDate = new Date(today);
+      checkDate.setDate(checkDate.getDate() - i);
+      if (practiceDays.has(checkDate.toDateString())) {
+        streak++;
+      } else if (i > 0) {
+        break;
+      }
+    }
+
+    // Recent sessions (last 10)
+    const recentSessions = (sessions || []).slice(-10).reverse().map(s => ({
+      id: s.id,
+      task_type: s.task_type,
+      status: s.status,
+      word_count: s.word_count,
+      created_at: s.created_at,
+    }));
+
+    // Dimension trend from diagnoses
+    const dimensionTrend = (diagnoses || []).map(d => ({
+      date: d.created_at,
+      tr: d.task_response_band,
+      cc: d.coherence_cohesion_band,
+      lr: d.lexical_resource_band,
+      gr: d.grammatical_range_band,
+    }));
+
+    // Weekly practice data (last 8 weeks)
+    const weeklyData: { week: string; count: number; words: number }[] = [];
+    for (let i = 7; i >= 0; i--) {
+      const weekStart = new Date();
+      weekStart.setDate(weekStart.getDate() - (i * 7 + weekStart.getDay()));
+      weekStart.setHours(0, 0, 0, 0);
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekEnd.getDate() + 7);
+
+      const weekSessions = sessions?.filter(s => {
+        const d = new Date(s.created_at);
+        return d >= weekStart && d < weekEnd;
+      }) || [];
+
+      weeklyData.push({
+        week: `${weekStart.getMonth() + 1}/${weekStart.getDate()}`,
+        count: weekSessions.length,
+        words: weekSessions.reduce((sum, s) => sum + (s.word_count || 0), 0),
+      });
+    }
+
+    res.json({
+      stats: {
+        total_sessions: totalSessions,
+        total_words: totalWords,
+        total_minutes: totalMinutes,
+        current_streak: streak,
+      },
+      recent_sessions: recentSessions,
+      dimension_trend: dimensionTrend,
+      weekly_data: weeklyData,
+    });
+  } catch (err) {
+    console.error('Progress error:', err);
+    res.status(500).json({ error: '获取进度数据失败' });
   }
 });
 

@@ -223,7 +223,7 @@ export default function DiagnosisScreen() {
                       {isExpanded && detail && (
                         <View className="mt-3 p-3 rounded-xl bg-stone-50 gap-2">
                           <View className="flex-row items-start gap-2">
-                            <FontAwesome6 name="check-circle" size={12} color="#10B981" />
+                            <FontAwesome6 name="circle-check" size={12} color="#10B981" />
                             <Text className="text-stone-700 text-xs flex-1 leading-5">{detail.strength}</Text>
                           </View>
                           <View className="flex-row items-start gap-2">
@@ -240,7 +240,7 @@ export default function DiagnosisScreen() {
               {/* No total score notice */}
               <View className="mt-5 pt-4 border-t border-stone-100">
                 <View className="flex-row items-center gap-2">
-                  <FontAwesome6 name="info-circle" size={14} color="#4F46E5" />
+                  <FontAwesome6 name="circle-info" size={14} color="#4F46E5" />
                   <Text className="text-indigo-700 text-xs">这是分项诊断，不是总分。每个维度独立评分。</Text>
                 </View>
               </View>

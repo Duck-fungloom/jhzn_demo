@@ -45,6 +45,8 @@ export default function RootLayout() {
           <Stack.Screen name="login" />
           <Stack.Screen name="onboarding" />
           <Stack.Screen name="diagnosis" />
+        <Stack.Screen name="commitment" />
+        <Stack.Screen name="progress" />
           <Stack.Screen name="night" />
           <Stack.Screen name="settings" />
           <Stack.Screen name="comparison" />
