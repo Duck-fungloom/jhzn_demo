@@ -154,11 +154,19 @@ router.post('/:id/practice-sessions', async (req, res) => {
     const { task_type } = req.body as { task_type: string };
     const db = getSupabaseClient();
 
+    const defaultPrompts: Record<string, string> = {
+      writing: 'Some people believe that technology has made our lives more complex. To what extent do you agree or disagree? Write at least 250 words.',
+      speaking: 'Describe a book you read recently that you found interesting. You should say: what the book was, why you read it, what it was about, and explain why you found it interesting.',
+      reading: 'Read the following passage and answer the questions that follow. Focus on identifying the main idea and supporting details.',
+      listening: 'Listen to the conversation and answer the questions. Pay attention to the key details mentioned by the speakers.',
+    };
+
     const { data: session, error } = await db
       .from('practice_sessions')
       .insert({
         student_id: id,
         task_type,
+        task_prompt: defaultPrompts[task_type] || 'Complete the practice task.',
         status: 'active',
         phase: 'try',
       })
@@ -336,6 +344,55 @@ router.post('/:id/practice-sessions/:sessionId/submit', async (req, res) => {
   } catch (err) {
     console.error('Submit error:', err);
     res.status(500).json({ error: '提交失败' });
+  }
+});
+
+// POST /api/v1/student/:id/practice-sessions/:sessionId/scaffold - Request scaffold hint
+router.post('/:id/practice-sessions/:sessionId/scaffold', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const { level, student_message } = req.body;
+    const db = getSupabaseClient();
+
+    // Verify session exists
+    const { data: session, error: sessErr } = await db
+      .from('practice_sessions')
+      .select('*')
+      .eq('id', sessionId)
+      .maybeSingle();
+
+    if (sessErr) throw sessErr;
+    if (!session) {
+      return res.status(404).json({ error: '练习会话不存在' });
+    }
+
+    // Return scaffold response based on level
+    const scaffoldResponses: Record<number, { hint: string; strategy: string }> = {
+      1: {
+        hint: '先想想你的论点核心是什么——用一句话概括你想说服读者相信什么。如果一句话说不清，说明论点还不够聚焦。',
+        strategy: 'direction_hint',
+      },
+      2: {
+        hint: '你的论点在第二段。试试这个结构：先提出论点（1句）→ 给出理由（1句）→ 用具体例子支撑（2句）→ 回扣论点（1句）。这就是 PEEL 结构：Point, Evidence, Explanation, Link。',
+        strategy: 'guided_path',
+      },
+      3: {
+        hint: '示范段落：\n\n"There is a growing consensus that renewable energy is not just environmentally necessary but economically advantageous. For instance, the cost of solar panels has dropped by 89% since 2010 (IRENA, 2023), making solar power cheaper than coal in many regions. This cost reduction, combined with government subsidies, creates a compelling economic case for transition. Therefore, the shift to renewable energy represents both a moral imperative and a sound investment."\n\n注意结构：论点→证据→解释→回扣。现在用同样的结构重写你的段落。',
+        strategy: 'full_demo',
+      },
+    };
+
+    const scaffold = scaffoldResponses[level] || scaffoldResponses[1];
+
+    res.json({
+      level,
+      hint: scaffold.hint,
+      strategy: scaffold.strategy,
+      session_id: sessionId,
+    });
+  } catch (err) {
+    console.error('Scaffold error:', err);
+    res.status(500).json({ error: '获取支架失败' });
   }
 });
 

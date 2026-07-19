@@ -48,6 +48,7 @@ export default function RootLayout() {
           <Stack.Screen name="night" />
           <Stack.Screen name="settings" />
           <Stack.Screen name="comparison" />
+          <Stack.Screen name="writing" />
         </Stack>
       </Provider>
     </SafeAreaProvider>

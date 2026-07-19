@@ -64,7 +64,7 @@ export default function PracticeScreen() {
               key={item.id}
               className="bg-white rounded-2xl p-5"
               style={{ shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 8, elevation: 1 }}
-              onPress={() => router.push('/practice')}
+              onPress={() => router.push('/writing', { id: item.id })}
             >
               <View className="flex-row items-start justify-between mb-2">
                 <View className="flex-row items-center gap-2 flex-1">
@@ -105,7 +105,7 @@ export default function PracticeScreen() {
                   </View>
                 </View>
                 <TouchableOpacity className="bg-blue-600 rounded-xl px-4 py-2 flex-row items-center gap-1.5"
-                  onPress={() => router.push('/practice')}>
+                  onPress={() => router.push('/writing', { id: item.id })}>
                   <FontAwesome6 name="bolt" size={12} color="#fff" />
                   <Text className="text-white text-xs font-medium">开始</Text>
                 </TouchableOpacity>
