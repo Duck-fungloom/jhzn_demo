@@ -95,7 +95,7 @@ export default function OnboardingScreen() {
   const [essay, setEssay] = useState('');
   const [timeLeft, setTimeLeft] = useState(15 * 60);
   const [showResults, setShowResults] = useState(false);
-  const BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL;
+  const BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://localhost:9091';
 
   const wordCount = essay.trim() ? essay.trim().split(/\s+/).length : 0;
   const isStep1Valid = !!targetScore;

@@ -113,7 +113,7 @@ function TimePickerModal({
 export default function SettingsScreen() {
   const { student } = useAuth();
   const router = useSafeRouter();
-  const BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL;
+  const BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://localhost:9091';
   const [prefs, setPrefs] = useState<NotifPrefs>({
     morning_enabled: true,
     afternoon_enabled: true,

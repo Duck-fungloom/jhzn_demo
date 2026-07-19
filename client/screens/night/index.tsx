@@ -165,7 +165,7 @@ function BreathingCircle({ breathText }: { breathText: string }) {
 
 export default function NightScreen() {
   const { student } = useAuth();
-  const BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL;
+  const BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://localhost:9091';
   const [phase, setPhase] = useState<'intro' | 'chat' | 'breathing' | 'goodnight'>('intro');
   const [breathText, setBreathText] = useState('吸气...');
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);

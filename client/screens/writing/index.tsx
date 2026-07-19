@@ -26,7 +26,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import EventSource from 'react-native-sse';
 
 const { width: SCREEN_W } = Dimensions.get('window');
-const API_BASE = process.env.EXPO_PUBLIC_BACKEND_BASE_URL;
+const API_BASE = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://localhost:9091';
 
 // 写作题目
 const TASK = {

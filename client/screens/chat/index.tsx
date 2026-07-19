@@ -7,7 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useFocusEffect } from 'expo-router';
 import SSE from 'react-native-sse';
 
-const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL;
+const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://localhost:9091';
 
 const ROLES = [
   { id: 'coach', name: 'Coach Alex', title: '教练', desc: '目标驱动，推动你突破', sub: '严格要求，聚焦结果', color: '#F97316', bg: '#FFF7ED', icon: 'dumbbell' as const },

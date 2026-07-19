@@ -224,7 +224,7 @@ export default function ProfileScreen() {
 
   const fetchProfile = useCallback(async () => {
     try {
-      const res = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/student/profile`);
+      const res = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://localhost:9091'}/api/v1/student/profile`);
       const data = await res.json();
       if (data.portrait) setProfile(data);
     } catch { /* ignore */ }

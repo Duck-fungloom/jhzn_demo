@@ -166,7 +166,7 @@ export default function HomeScreen() {
   const [showMore, setShowMore] = useState(false);
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL;
+  const BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://localhost:9091';
 
   const fetchMoments = useCallback(async () => {
     if (!student) return;
