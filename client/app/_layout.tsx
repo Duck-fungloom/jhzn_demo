@@ -1,30 +1,58 @@
-import { Stack } from 'expo-router';
+import { useEffect } from 'react';
+import { Stack, useSegments } from 'expo-router';
+import { useColorScheme, Platform } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { LogBox } from 'react-native';
-import Toast from 'react-native-toast-message';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Provider } from '@/components/Provider';
-
+import { useAuth } from '@/contexts/AuthContext';
+import { useSafeRouter } from '@/hooks/useSafeRouter';
 import '../global.css';
 
-LogBox.ignoreLogs([
-  "TurboModuleRegistry.getEnforcing(...): 'RNMapsAirModule' could not be found",
-  // 添加其它想暂时忽略的错误或警告信息
-]);
+function AuthRedirect() {
+  const { student, isLoading } = useAuth();
+  const router = useSafeRouter();
+  const segments = useSegments();
+
+  useEffect(() => {
+    if (isLoading) return;
+
+    const inLogin = segments.includes('login');
+
+    if (!student && !inLogin) {
+      router.replace('/login');
+    }
+  }, [student, isLoading, segments, router]);
+
+  return null;
+}
 
 export default function RootLayout() {
+  const colorScheme = useColorScheme();
+
+  useEffect(() => {
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      document.body.className = colorScheme === 'dark' ? 'dark' : 'light';
+    }
+  }, [colorScheme]);
+
   return (
-    <Provider>
-      <Stack
-        screenOptions={{
-          animation: 'slide_from_right',
-          gestureEnabled: true,
-          gestureDirection: 'horizontal',
-          headerShown: false
-        }}
-      >
-        <Stack.Screen name="index" options={{ title: "" }} />
-      </Stack>
-      <Toast />
-    </Provider>
+    <SafeAreaProvider>
+      <Provider>
+        <AuthRedirect />
+        <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="login" />
+          <Stack.Screen name="onboarding" />
+          <Stack.Screen name="diagnosis" />
+        <Stack.Screen name="commitment" />
+        <Stack.Screen name="progress" />
+          <Stack.Screen name="night" />
+          <Stack.Screen name="settings" />
+          <Stack.Screen name="comparison" />
+          <Stack.Screen name="writing" />
+        </Stack>
+      </Provider>
+    </SafeAreaProvider>
   );
 }

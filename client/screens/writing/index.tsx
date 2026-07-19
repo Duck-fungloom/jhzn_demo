@@ -23,6 +23,7 @@ import { Screen } from '@/components/Screen';
 import { useSafeRouter, useSafeSearchParams } from '@/hooks/useSafeRouter';
 import { FontAwesome6 } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import EventSource from 'react-native-sse';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const API_BASE = process.env.EXPO_PUBLIC_BACKEND_BASE_URL;
@@ -206,64 +207,6 @@ export default function WritingScreen() {
   }, [content]);
 
   // Send message to Mentor Agent (Scaffold chat)
-// SSE helper using native fetch
-const fetchSSE = async (
-  url: string,
-  body: any,
-  onChunk: (content: string) => void,
-  onDone: () => void,
-  onError: () => void
-) => {
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-
-    if (!response.ok || !response.body) {
-      onError();
-      return;
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    let fullContent = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const data = line.slice(6).trim();
-          if (data === '[DONE]') {
-            onDone();
-            return;
-          }
-          try {
-            const parsed = JSON.parse(data);
-            if (parsed.type === 'chunk' && parsed.content) {
-              fullContent += parsed.content;
-              onChunk(fullContent);
-            }
-          } catch (_e) {
-            // skip non-JSON lines
-          }
-        }
-      }
-    }
-    onDone();
-  } catch (_e) {
-    onError();
-  }
-};
-
   const handleSendMessage = useCallback(async () => {
     if (!inputText.trim() || isStreaming) return;
     const userMsg = inputText.trim();
@@ -286,27 +229,48 @@ const fetchSSE = async (
     setMessages(prev => [...prev, assistantMsg]);
 
     try {
-      await fetchSSE(
+      const es = new EventSource(
         `${API_BASE}/api/v1/student/${studentId}/chat/with-memory`,
         {
-          message: userMsg,
-          selected_role: 'mentor',
-          practice_session_id: sessionId,
-          current_moment: 'practice_plateau',
-          conversation_id: `scaffold-${sessionId}`,
-        },
-        (fullContent) => {
-          setMessages(prev =>
-            prev.map(m =>
-              m.id === assistantMsg.id ? { ...m, content: fullContent } : m
-            )
-          );
-        },
-        () => {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: userMsg,
+            selected_role: 'mentor',
+            practice_session_id: sessionId,
+            current_moment: 'practice_plateau',
+            conversation_id: `scaffold-${sessionId}`,
+          }),
+        } as any
+      );
+
+      let fullContent = '';
+
+      es.addEventListener('message', (event) => {
+        if (event.data === '[DONE]') {
+          es.close();
           setIsStreaming(false);
           setActiveScaffoldLevel(0);
-        },
-        () => {
+          return;
+        }
+        try {
+          const parsed = JSON.parse(event.data || '{}');
+          if (parsed.type === 'chunk' && parsed.content) {
+            fullContent += parsed.content;
+            setMessages(prev =>
+              prev.map(m =>
+                m.id === assistantMsg.id ? { ...m, content: fullContent } : m
+              )
+            );
+          }
+        } catch (_e) {
+          // skip non-JSON lines
+        }
+      });
+
+      es.addEventListener('error', () => {
+        es.close();
+        if (!fullContent) {
           setMessages(prev =>
             prev.map(m =>
               m.id === assistantMsg.id
@@ -314,10 +278,10 @@ const fetchSSE = async (
                 : m
             )
           );
-          setIsStreaming(false);
-          setActiveScaffoldLevel(0);
         }
-      );
+        setIsStreaming(false);
+        setActiveScaffoldLevel(0);
+      });
     } catch (e) {
       console.warn('SSE error:', e);
       setMessages(prev =>
@@ -360,28 +324,49 @@ const fetchSSE = async (
     setMessages(prev => [...prev, assistantMsg]);
 
     try {
-      await fetchSSE(
+      const es = new EventSource(
         `${API_BASE}/api/v1/student/${studentId}/chat/with-memory`,
         {
-          message: prompts[level],
-          selected_role: 'mentor',
-          practice_session_id: sessionId,
-          current_moment: 'practice_plateau',
-          conversation_id: `scaffold-${sessionId}`,
-          scaffold_level: level,
-        },
-        (fullContent) => {
-          setMessages(prev =>
-            prev.map(m =>
-              m.id === assistantMsg.id ? { ...m, content: fullContent } : m
-            )
-          );
-        },
-        () => {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: prompts[level],
+            selected_role: 'mentor',
+            practice_session_id: sessionId,
+            current_moment: 'practice_plateau',
+            conversation_id: `scaffold-${sessionId}`,
+            scaffold_level: level,
+          }),
+        } as any
+      );
+
+      let fullContent = '';
+
+      es.addEventListener('message', (event) => {
+        if (event.data === '[DONE]') {
+          es.close();
           setIsStreaming(false);
           setActiveScaffoldLevel(0);
-        },
-        () => {
+          return;
+        }
+        try {
+          const parsed = JSON.parse(event.data || '{}');
+          if (parsed.type === 'chunk' && parsed.content) {
+            fullContent += parsed.content;
+            setMessages(prev =>
+              prev.map(m =>
+                m.id === assistantMsg.id ? { ...m, content: fullContent } : m
+              )
+            );
+          }
+        } catch (_e) {
+          // skip
+        }
+      });
+
+      es.addEventListener('error', () => {
+        es.close();
+        if (!fullContent) {
           setMessages(prev =>
             prev.map(m =>
               m.id === assistantMsg.id
@@ -389,10 +374,10 @@ const fetchSSE = async (
                 : m
             )
           );
-          setIsStreaming(false);
-          setActiveScaffoldLevel(0);
         }
-      );
+        setIsStreaming(false);
+        setActiveScaffoldLevel(0);
+      });
     } catch (e) {
       console.warn('Scaffold SSE error:', e);
       setIsStreaming(false);

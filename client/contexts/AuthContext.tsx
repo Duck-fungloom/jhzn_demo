@@ -1,159 +1,125 @@
-/**
- * 认知伙伴认证上下文
- *
- * 管理学生登录状态和学生信息
- */
-import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export interface Student {
+const BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://localhost:9091';
+
+interface Student {
   id: string;
-  name: string;
   phone: string;
+  name: string;
+  onboarded: boolean;
   target_band?: number;
   exam_date?: string;
-  current_moment?: string;
+}
+
+interface Portrait {
+  id: string;
+  student_id: string;
+  current_moment: string;
+  five_dimensions: Record<string, number>;
+  anxiety_level: number;
+  band_history: Array<{ date: string; band: number }>;
 }
 
 interface AuthContextType {
   student: Student | null;
-  token: string | null;
-  isAuthenticated: boolean;
+  portrait: Portrait | null;
   isLoading: boolean;
   login: (phone: string, name?: string) => Promise<void>;
-  logout: () => Promise<void>;
-  refreshStudent: () => Promise<void>;
+  logout: () => void;
+  refreshProfile: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const AuthContext = createContext<AuthContextType>({
+  student: null,
+  portrait: null,
+  isLoading: true,
+  login: async (_phone: string, _name?: string) => { /* provided by AuthProvider */ },
+  logout: () => { /* provided by AuthProvider */ },
+  refreshProfile: async () => { /* provided by AuthProvider */ },
+});
 
-const STUDENT_STORAGE_KEY = 'cognitive_companion_student';
-const TOKEN_STORAGE_KEY = 'cognitive_companion_token';
-
-export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+export function AuthProvider({ children }: { children: ReactNode }) {
   const [student, setStudent] = useState<Student | null>(null);
-  const [token, setToken] = useState<string | null>(null);
+  const [portrait, setPortrait] = useState<Portrait | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // 初始化：从 AsyncStorage 加载学生信息
+  const fetchProfile = useCallback(async (studentId: string) => {
+    try {
+      const res = await fetch(`${BASE_URL}/api/v1/student/${studentId}/profile`);
+      const data = await res.json();
+      if (data.portrait) {
+        setPortrait(data.portrait);
+      }
+    } catch (e) {
+      console.error('Failed to fetch profile:', e);
+    }
+  }, [BASE_URL]);
+
   useEffect(() => {
-    const loadStoredData = async () => {
+    const init = async () => {
       try {
-        const storedStudent = await AsyncStorage.getItem(STUDENT_STORAGE_KEY);
-        const storedToken = await AsyncStorage.getItem(TOKEN_STORAGE_KEY);
-        if (storedStudent) {
-          setStudent(JSON.parse(storedStudent));
+        const phone = await AsyncStorage.getItem('user_phone');
+        if (phone) {
+          const res = await fetch(`${BASE_URL}/api/v1/auth/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone }),
+          });
+          const data = await res.json();
+          if (data.student) {
+            setStudent(data.student);
+            await fetchProfile(data.student.id);
+          }
         }
-        if (storedToken) {
-          setToken(storedToken);
-        }
-      } catch (error) {
-        console.error('Failed to load stored auth data:', error);
+      } catch (e) {
+        console.error('Init auth error:', e);
       } finally {
         setIsLoading(false);
       }
     };
-    loadStoredData();
-  }, []);
+    init();
+  }, [BASE_URL, fetchProfile]);
 
-  // 登录
   const login = useCallback(async (phone: string, name?: string) => {
     setIsLoading(true);
     try {
-      const BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL;
-      const response = await fetch(`${BASE_URL}/api/v1/auth/login`, {
+      const res = await fetch(`${BASE_URL}/api/v1/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone }),
+        body: JSON.stringify({ phone, name }),
       });
-
-      if (!response.ok) {
-        throw new Error('Login failed');
+      const data = await res.json();
+      if (data.student) {
+        setStudent(data.student);
+        await AsyncStorage.setItem('user_phone', phone);
+        await fetchProfile(data.student.id);
       }
-
-      const data = await response.json();
-      const studentData: Student = {
-        id: data.student.id,
-        name: data.student.name || name || '学生',
-        phone: data.student.phone || phone,
-        target_band: data.student.target_band,
-        exam_date: data.student.exam_date,
-        current_moment: data.student.current_moment,
-      };
-
-      setStudent(studentData);
-      setToken(data.token || 'demo-token');
-      
-      // 存储到 AsyncStorage
-      await AsyncStorage.setItem(STUDENT_STORAGE_KEY, JSON.stringify(studentData));
-      if (data.token) {
-        await AsyncStorage.setItem(TOKEN_STORAGE_KEY, data.token);
-      }
-    } catch (error) {
-      console.error('Login error:', error);
-      // 如果后端登录失败，使用本地模拟登录（用于 Demo）
-      const demoStudent: Student = {
-        id: 'demo-student',
-        name: name || '小明',
-        phone: phone,
-        target_band: 7.0,
-        exam_date: new Date(Date.now() + 86400000).toISOString(),
-        current_moment: 'entry_confusion',
-      };
-      setStudent(demoStudent);
-      setToken('demo-token');
-      await AsyncStorage.setItem(STUDENT_STORAGE_KEY, JSON.stringify(demoStudent));
-      await AsyncStorage.setItem(TOKEN_STORAGE_KEY, 'demo-token');
+    } catch (e) {
+      console.error('Login failed:', e);
+      throw e;
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [BASE_URL, fetchProfile]);
 
-  // 登出
-  const logout = useCallback(async () => {
+  const logout = useCallback(() => {
     setStudent(null);
-    setToken(null);
-    await AsyncStorage.removeItem(STUDENT_STORAGE_KEY);
-    await AsyncStorage.removeItem(TOKEN_STORAGE_KEY);
+    setPortrait(null);
+    AsyncStorage.removeItem('user_phone');
   }, []);
 
-  // 刷新学生信息
-  const refreshStudent = useCallback(async () => {
-    if (!student?.id) return;
-    try {
-      const BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL;
-      const response = await fetch(`${BASE_URL}/api/v1/student/${student.id}`);
-      if (response.ok) {
-        const data = await response.json();
-        const updatedStudent: Student = {
-          ...student,
-          ...data.student,
-        };
-        setStudent(updatedStudent);
-        await AsyncStorage.setItem(STUDENT_STORAGE_KEY, JSON.stringify(updatedStudent));
-      }
-    } catch (error) {
-      console.error('Failed to refresh student:', error);
+  const refreshProfile = useCallback(async () => {
+    if (student) {
+      await fetchProfile(student.id);
     }
-  }, [student]);
+  }, [student, fetchProfile]);
 
-  const value: AuthContextType = {
-    student,
-    token,
-    isAuthenticated: !!student,
-    isLoading,
-    login,
-    logout,
-    refreshStudent,
-  };
+  return (
+    <AuthContext.Provider value={{ student, portrait, isLoading, login, logout, refreshProfile }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-};
-
-export const useAuth = (): AuthContextType => {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error("useAuth must be used within an AuthProvider");
-  }
-  return context;
-};
+export const useAuth = () => useContext(AuthContext);

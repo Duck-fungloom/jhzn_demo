@@ -35,7 +35,7 @@ export default function LoginScreen() {
   const doLogin = useCallback(async () => {
     setLoading(true);
     try {
-      await login(phone);
+      await login(phone, 'Student');
       router.replace('/onboarding');
     } catch (err) {
       console.error('Login error:', err);
@@ -45,7 +45,7 @@ export default function LoginScreen() {
   }, [router, login, phone]);
 
   const handleQuickStart = useCallback(() => {
-    login('13800138001').then(() => {
+    login('13800000001', 'Demo Student').then(() => {
       router.replace('/onboarding');
     }).catch((e) => console.warn("Login error:", e));
   }, [router, login]);
