@@ -86,7 +86,7 @@ export default function HomeScreen() {
                   </View>
                   <TouchableOpacity
                     className="flex-1 bg-blue-50 rounded-2xl p-4 mb-4"
-                    onPress={() => router.push('/diagnosis', { sessionId: 'demo' })}
+                    onPress={() => router.push('/diagnosis', { sessionId: 'sess-diag-001' })}
                   >
                     <View className="flex-row items-center justify-between mb-2">
                       <Text className="text-stone-900 font-bold text-base">
@@ -96,7 +96,7 @@ export default function HomeScreen() {
                     </View>
                     <Text className="text-stone-600 text-sm leading-5 mb-2">{moment.desc}</Text>
                     <Text className="text-stone-400 text-xs mb-3">{moment.date}</Text>
-                    <TouchableOpacity onPress={() => router.push('/diagnosis', { sessionId: 'demo' })}>
+                    <TouchableOpacity onPress={() => router.push('/diagnosis', { sessionId: 'sess-diag-001' })}>
                       <Text className="text-blue-600 text-sm font-medium">回看诊断 →</Text>
                     </TouchableOpacity>
                   </TouchableOpacity>
@@ -123,7 +123,7 @@ export default function HomeScreen() {
                       <TouchableOpacity
                         className="flex-1 bg-blue-600 rounded-xl py-3 items-center"
                         onPress={() => {
-                          if (moment.id === 'first_exam_shock') router.push('/diagnosis', { sessionId: 'demo' });
+                          if (moment.id === 'first_exam_shock') router.push('/diagnosis', { sessionId: 'sess-diag-001' });
                           else router.push('/onboarding');
                         }}
                       >
